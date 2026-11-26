@@ -1,4 +1,4 @@
-const CACHE_NAME = 'my-elib-v2';
+const CACHE_NAME = 'my-elib-v3';
 const ASSETS = [
   './',
   './index.html',

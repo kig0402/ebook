@@ -386,10 +386,25 @@ html, body {
 
 .result-status {
   margin-top: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 10px;
   background: var(--surface-alt);
   font-size: 13px;
+}
+
+.result-status.status-available {
+  background: var(--kyobo-bg);
+  color: var(--kyobo);
+}
+
+.result-status.status-loaned {
+  background: var(--yes24-bg);
+  color: var(--yes24);
+}
+
+.result-status.status-none {
+  background: var(--surface-alt);
+  color: var(--text-muted);
 }
 
 .result-items {

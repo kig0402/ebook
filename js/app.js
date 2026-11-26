@@ -292,50 +292,85 @@ function parseLibraryHtml(platform, html, query) {
   const text = doc.body ? doc.body.textContent.replace(/\s+/g, ' ').trim() : '';
 
   if (!text) {
-    return { status: 'unknown', message: '응답을 읽을 수 없습니다. 직접 열기로 확인해 주세요.' };
+    return { status: 'unknown', tone: 'none', message: '응답을 읽을 수 없습니다. 직접 열기로 확인해 주세요.' };
   }
 
-  if (/검색\s*결과가\s*없습니다|검색된\s*도서가\s*없습니다|소장\s*자료가\s*없습니다/.test(text)) {
-    return { status: 'not_found', message: '해당 도서관에 소장 도서가 없는 것으로 보입니다.' };
+  if (/검색\s*결과가\s*없습니다|검색된\s*도서가\s*없습니다|소장\s*자료가\s*없습니다|일치하는\s*도서가\s*없습니다/.test(text)) {
+    return { status: 'not_found', tone: 'none', message: '❌ 소장 도서가 없습니다.' };
   }
 
-  // 교보문고/예스24 일반 리스트 항목 추출 시도
-  const candidates = [];
-  const selectors =
+  // 교보문고/예스24 도서 목록 및 권별 상태 추출 시도
+  const items = [];
+  const rowSelectors =
     platform === 'kyobo'
-      ? ['.book_title', '.title a', '.list_book .tit', 'a[href*="detail"]']
-      : ['.goods_name', '.book_name', '.title a', 'a[href*="Detail"]'];
+      ? ['.book_list > li', '.list_book > li', '.search_list > li', 'tr']
+      : ['.goods_list > li', '.book_list > li', '.search_list > li', 'tr'];
 
-  for (const sel of selectors) {
-    doc.querySelectorAll(sel).forEach((node) => {
-      const t = node.textContent.replace(/\s+/g, ' ').trim();
-      if (t && t.length >= 2 && t.length <= 80 && !candidates.includes(t)) {
-        candidates.push(t);
-      }
+  for (const rowSel of rowSelectors) {
+    doc.querySelectorAll(rowSel).forEach((row) => {
+      const titleNode = row.querySelector('.book_title, .title a, .tit, .goods_name, .book_name, a[href*="detail"], a[href*="Detail"]');
+      if (!titleNode) return;
+      const title = titleNode.textContent.replace(/\s+/g, ' ').trim();
+      if (!title || title.length < 2 || title.length > 80) return;
+
+      const rowText = row.textContent.replace(/\s+/g, ' ').trim();
+      const countMatch = rowText.match(/(\d+\s*권\s*(이용\s*가능|대출\s*가능)|대출\s*가능\s*\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|대출\s*가능|즉시\s*대출|대출중|예약\s*가능)/);
+      const label = countMatch ? `${title} — ${countMatch[0]}` : title;
+      if (!items.includes(label)) items.push(label);
     });
-    if (candidates.length >= 3) break;
+    if (items.length >= 3) break;
   }
 
-  const loanMatch = text.match(/대출\s*가능|즉시\s*대출|예약\s*가능|대출중/);
-  const loanHint = loanMatch ? ` (${loanMatch[0]})` : '';
+  // Fallback: 제목 단독 추출
+  if (items.length === 0) {
+    const titleSelectors =
+      platform === 'kyobo'
+        ? ['.book_title', '.title a', '.list_book .tit', 'a[href*="detail"]']
+        : ['.goods_name', '.book_name', '.title a', 'a[href*="Detail"]'];
+    for (const sel of titleSelectors) {
+      doc.querySelectorAll(sel).forEach((node) => {
+        const t = node.textContent.replace(/\s+/g, ' ').trim();
+        if (t && t.length >= 2 && t.length <= 80 && !items.includes(t)) {
+          items.push(t);
+        }
+      });
+      if (items.length >= 3) break;
+    }
+  }
 
-  if (candidates.length > 0) {
+  const availMatch = text.match(/(\d+\s*권\s*(이용\s*가능|대출\s*가능)|대출\s*가능\s*\d+\s*\/\s*\d+|대출\s*가능|즉시\s*대출)/);
+  const loanedMatch = text.match(/(대출중|모두\s*대출|예약\s*가능|예약\s*중)/);
+
+  let tone = 'none';
+  let summary = '소장 정보 확인';
+  if (availMatch) {
+    tone = 'available';
+    summary = `✅ 이용 가능 (${availMatch[0]})`;
+  } else if (loanedMatch) {
+    tone = 'loaned';
+    summary = `⏳ ${loanedMatch[0]}`;
+  }
+
+  if (items.length > 0) {
     return {
       status: 'found',
-      message: `검색 결과 발견${loanHint}`,
-      items: candidates.slice(0, 3)
+      tone: tone === 'none' ? 'available' : tone,
+      message: summary === '소장 정보 확인' ? '✅ 소장 도서 발견' : summary,
+      items: items.slice(0, 3)
     };
   }
 
   if (text.toLowerCase().includes(query.toLowerCase())) {
     return {
       status: 'found',
-      message: `관련 도서 정보가 감지되었습니다${loanHint}. 아래 버튼으로 상세 확인하세요.`
+      tone: tone === 'none' ? 'available' : tone,
+      message: `${summary} · 아래 버튼으로 상세 확인하세요.`
     };
   }
 
   return {
     status: 'unknown',
+    tone: 'none',
     message: '페이지 구조가 다르거나 로그인이 필요합니다. 직접 열기로 확인해 주세요.'
   };
 }
@@ -413,6 +448,7 @@ async function runSearch(query) {
         const statusEl = document.getElementById(`status-${lib.id}`);
         if (!statusEl || !result) return;
 
+        statusEl.className = `result-status ${result.tone ? `status-${result.tone}` : ''}`;
         let html = `<strong>${escapeHtml(result.message)}</strong>`;
         if (result.items && result.items.length > 0) {
           html += `<ul class="result-items">${result.items
