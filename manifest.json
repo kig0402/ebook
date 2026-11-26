@@ -1,0 +1,19 @@
+{
+  "name": "내 전자도서관 통합검색",
+  "short_name": "전자도서관",
+  "description": "교보문고, 부커스, 예스24 지역전자도서관 통합검색 앱",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
